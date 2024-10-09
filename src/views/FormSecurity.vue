@@ -213,30 +213,30 @@
 </template>
 
 <script>
+import axios from 'axios'
 import HeaderComponent from '@/components/HeaderComponent.vue'
+
 export default {
   components: {
     HeaderComponent
   },
   data() {
     return {
-      // Données du formulaire de sécurité
       formDataSecurity: {
-        numero: 0, // Numéro du formulaire
-        description: '', // Description du problème
-        photos: [null, null], // Photos ajoutées au formulaire
-        date: '', // Date de l'incident
-        time: '', // Heure de l'incident
-        similarIssues: ['no', null], // Problèmes similaires (oui/non et numéro)
-        combien: '', // Quantité affectée
-        name: '', // Nom de la personne qui remplit le formulaire
-        location: '', // Lieu de l'incident
-        alertContacts: [], // Contacts alertés
-        securisation: 'no', // Indique si une sécurisation est nécessaire
-        immediateActions: [], // Actions immédiates prises
-        submissionTime: '' // Heure de soumission du formulaire
+        numero: 0,
+        description: '',
+        photos: [null, null],
+        date: '',
+        time: '',
+        similarIssues: ['no', null],
+        combien: '',
+        name: '',
+        location: '',
+        alertContacts: [],
+        securisation: 'no',
+        immediateActions: [],
+        submissionTime: ''
       },
-      // Liste des contacts disponibles pour être alertés
       contacts: [
         { id: 1, name: 'Team Leader', email: 'teamleader@example.com' },
         { id: 2, name: 'Superviseur', email: 'superviseur@example.com' },
@@ -246,67 +246,63 @@ export default {
         { id: 6, name: 'Site/Prod Mgr', email: 'siteprodmgr@example.com' },
         { id: 7, name: 'Logistique', email: 'logistique@example.com' }
       ],
-      // Données de tri (pièces OK et NOK)
       sortingData: {
-        piecesOk: 0, // Nombre de pièces conformes
-        piecesNok: 0 // Nombre de pièces non conformes
+        piecesOk: 0,
+        piecesNok: 0
       },
-      // Historique des 7 derniers jours
       last7DaysDataSecurity: [],
-      // Nouvelle action immédiate en cours de saisie
       newAction: {
-        action: '', // Description de l'action
-        name: '', // Nom de la personne qui a effectué l'action
-        time: '' // Heure de l'action
+        action: '',
+        name: '',
+        time: ''
       },
-      // Contexte des canevas pour le dessin sur les photos
       canvasContext: [null, null],
-      // Statut du dessin pour chaque canevas
       isDrawing: [false, false]
     }
   },
   mounted() {
-    // Chargement des données depuis le localStorage lors du montage du composant
     this.loadJsonData()
-    // Mise à jour du numéro du formulaire en fonction des données chargées
-    this.formDataSecurity.numero = this.last7DaysDataSecurity.length + 1
-    // Initialisation de la date et de l'heure actuelles
     this.setCurrentDateTime()
-    // Initialisation des canevas pour le dessin
     this.initializeDrawings()
   },
   methods: {
-    // Chargement des données depuis le localStorage
-    loadJsonData() {
-      const storedDataSecurity = localStorage.getItem('formDataSecurityKey')
-      if (storedDataSecurity) {
-        this.last7DaysDataSecurity = JSON.parse(storedDataSecurity)
-      } else {
-        this.last7DaysDataSecurity = [] // Initialiser comme un tableau vide si aucune donnée
+    // Charger les données depuis le backend
+    async loadJsonData() {
+      try {
+        const response = await axios.get('http://localhost:3000/api/history')
+        this.last7DaysDataSecurity = response.data
+        this.formDataSecurity.numero = this.last7DaysDataSecurity.length + 1
+      } catch (error) {
+        console.error('Erreur lors du chargement des données :', error)
       }
     },
 
-    // Soumission du formulaire
-    submitForm() {
-      this.loadJsonData() // Recharger les données pour obtenir les dernières mises à jour
-      const submissionTime = this.getCurrentTime() // Obtenir l'heure actuelle
-      this.formDataSecurity.submissionTime = submissionTime
-      // Mettre à jour le numéro du formulaire
-      this.formDataSecurity.numero = this.last7DaysDataSecurity.length + 1
-      // Ajouter les données du formulaire à l'historique
-      this.last7DaysDataSecurity.push({ ...this.formDataSecurity, sortingData: this.sortingData })
-      // Sauvegarder les données dans le localStorage
-      this.saveJsonData()
-      // Réinitialiser le formulaire pour une nouvelle saisie
-      this.resetFormData()
-      // Réinitialiser les canevas après soumission
-      this.resetCanvas()
-    },
+    // Soumettre les données au backend
+    async submitForm() {
+      try {
+        this.formDataSecurity.submissionTime = this.getCurrentTime()
 
-    // Réinitialisation des données du formulaire après soumission
+        // Vérifie que les champs JSON sont bien formés
+        console.log('Data being sent:', {
+          ...this.formDataSecurity,
+          sortingData: this.sortingData
+        })
+
+        const response = await axios.post('http://localhost:3000/api/form-submit', {
+          ...this.formDataSecurity,
+          sortingData: this.sortingData
+        })
+
+        this.last7DaysDataSecurity.push(response.data)
+        this.resetFormData()
+        this.resetCanvas()
+      } catch (error) {
+        console.error('Erreur lors de la soumission :', error)
+      }
+    },
     resetFormData() {
       this.formDataSecurity = {
-        numero: this.last7DaysDataSecurity.length + 1, // Mettre à jour le numéro
+        numero: this.last7DaysDataSecurity.length + 1,
         description: '',
         photos: [null, null],
         date: '',
@@ -320,26 +316,20 @@ export default {
         immediateActions: [],
         submissionTime: ''
       }
-      // Réinitialiser les données de tri
       this.sortingData = {
         piecesOk: 0,
         piecesNok: 0
       }
-      // Mettre à jour la date et l'heure actuelles
       this.setCurrentDateTime()
-      // Effacer les dessins sur les canevas (optionnel si resetCanvas() est appelé)
-      // this.clearDrawings()
     },
 
-    // Réinitialiser les canevas après soumission
+    // Gestion des canevas et des photos
     resetCanvas() {
-      // Effacer les canevas et réinitialiser le dessin
       this.clearPhoto(0)
       this.clearPhoto(1)
-      this.initializeDrawings() // Réinitialiser les canevas pour permettre le dessin
+      this.initializeDrawings()
     },
 
-    // Initialisation des canevas pour le dessin
     initializeDrawings() {
       this.$nextTick(() => {
         this.setupCanvas(this.$refs.drawingCanvas1, 0)
@@ -347,26 +337,20 @@ export default {
       })
     },
 
-    // Configuration du canevas pour le dessin
     setupCanvas(canvas, index) {
       const ctx = canvas.getContext('2d')
       this.canvasContext[index] = ctx
       this.enableDrawing(canvas, ctx, index)
     },
 
-    // Activation du dessin sur le canevas
     enableDrawing(canvas, ctx, index) {
       let isDrawing = false
 
-      // Fonction pour ajuster les coordonnées du pointeur de la souris
       function getAdjustedCoordinates(event) {
         const rect = canvas.getBoundingClientRect()
-        const offsetX = event.clientX - rect.left
-        const offsetY = event.clientY - rect.top
-        return { x: offsetX, y: offsetY }
+        return { x: event.clientX - rect.left, y: event.clientY - rect.top }
       }
 
-      // Événements de souris pour le dessin
       canvas.addEventListener('mousedown', (event) => {
         isDrawing = true
         const { x, y } = getAdjustedCoordinates(event)
@@ -385,125 +369,98 @@ export default {
       canvas.addEventListener('mouseup', () => {
         if (isDrawing) {
           isDrawing = false
-          this.saveDrawing(index) // Sauvegarder le dessin actuel
+          this.saveDrawing(index)
         }
       })
 
       canvas.addEventListener('mouseleave', () => {
         if (isDrawing) {
           isDrawing = false
-          this.saveDrawing(index) // Sauvegarder le dessin si la souris quitte le canevas
+          this.saveDrawing(index)
         }
       })
     },
 
-    // Sauvegarder le dessin actuel en tant qu'image
     saveDrawing(index) {
       const canvas = index === 0 ? this.$refs.drawingCanvas1 : this.$refs.drawingCanvas2
-      const dataURL = canvas.toDataURL() // Convertir le dessin en base64
-      this.formDataSecurity.photos[index] = dataURL // Stocker l'image dans formDataSecurity.photos
+      const dataURL = canvas.toDataURL()
+      this.formDataSecurity.photos[index] = dataURL
     },
 
-    // Effacer le dessin et la photo du canevas
     clearPhoto(index) {
       const canvas = index === 0 ? this.$refs.drawingCanvas1 : this.$refs.drawingCanvas2
       const ctx = canvas.getContext('2d')
-      ctx.clearRect(0, 0, canvas.width, canvas.height) // Effacer le canevas
-      this.formDataSecurity.photos[index] = null // Supprimer la photo dans formDataSecurity
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      this.formDataSecurity.photos[index] = null
       const photoInput = index === 0 ? this.$refs.photoInput1 : this.$refs.photoInput2
       if (photoInput) {
-        photoInput.value = null // Réinitialiser le champ input file
+        photoInput.value = null
       }
     },
 
-    // Gestion du changement de l'option de sécurisation
     handleSecuringChange(value) {
       this.formDataSecurity.securisation = value
-      const contactEmail = this.contacts[3].email // 'Qualité' est à l'index 3
+      const contactEmail = this.contacts[3].email
       if (value === 'yes') {
-        // Ajouter le contact 'Qualité' s'il n'est pas déjà dans la liste
         if (!this.formDataSecurity.alertContacts.includes(contactEmail)) {
           this.formDataSecurity.alertContacts.push(contactEmail)
         }
-      } else if (value === 'no') {
-        // Retirer le contact 'Qualité' de la liste
+      } else {
         this.formDataSecurity.alertContacts = this.formDataSecurity.alertContacts.filter(
           (email) => email !== contactEmail
         )
       }
     },
 
-    // Gestion de l'upload des photos
     handlePhotoUpload(event, index) {
       const file = event.target.files[0]
       if (file) {
         const reader = new FileReader()
         reader.onload = (e) => {
-          this.formDataSecurity.photos[index] = e.target.result // Stocker la photo
-          this.loadPhotoToCanvas(e.target.result, index) // Charger la photo sur le canevas
+          this.formDataSecurity.photos[index] = e.target.result
+          this.loadPhotoToCanvas(e.target.result, index)
         }
-        reader.readAsDataURL(file) // Lire le fichier comme URL de données
+        reader.readAsDataURL(file)
       }
     },
 
-    // Charger la photo sur le canevas
     loadPhotoToCanvas(photoSrc, index) {
       const canvas = index === 0 ? this.$refs.drawingCanvas1 : this.$refs.drawingCanvas2
       const ctx = canvas.getContext('2d')
       const image = new Image()
       image.onload = () => {
-        ctx.clearRect(0, 0, canvas.width, canvas.height) // Effacer le canevas
-        ctx.drawImage(image, 0, 0, canvas.width, canvas.height) // Dessiner l'image sur le canevas
-        this.enableDrawing(canvas, ctx, index) // Activer le dessin sur le canevas
+        ctx.clearRect(0, 0, canvas.width, canvas.height)
+        ctx.drawImage(image, 0, 0, canvas.width, canvas.height)
+        this.enableDrawing(canvas, ctx, index)
       }
-      image.src = photoSrc // Définir la source de l'image
+      image.src = photoSrc
     },
 
-    // Définir la date et l'heure actuelles
     setCurrentDateTime() {
       const now = new Date()
-      const formattedDate = now.toISOString().split('T')[0] // Format AAAA-MM-JJ
-      const formattedTime = now.toTimeString().split(' ')[0].slice(0, 5) // Format HH:MM
-      this.formDataSecurity.date = formattedDate
-      this.formDataSecurity.time = formattedTime
+      this.formDataSecurity.date = now.toISOString().split('T')[0]
+      this.formDataSecurity.time = now.toTimeString().split(' ')[0].slice(0, 5)
     },
 
-    // Obtenir l'heure actuelle au format HH:MM
     getCurrentTime() {
       const now = new Date()
       return now.toTimeString().split(' ')[0].slice(0, 5)
     },
 
-    // Ajouter une action immédiate
     addAction() {
       if (this.newAction.action && this.newAction.name && this.newAction.time) {
-        // Ajouter l'action à la liste des actions immédiates
         this.formDataSecurity.immediateActions.push({ ...this.newAction })
-        // Réinitialiser le formulaire d'ajout d'action
         this.newAction = { action: '', name: '', time: '' }
       }
     },
 
-    // Supprimer une action immédiate de la liste
     removeAction(index) {
       this.formDataSecurity.immediateActions.splice(index, 1)
     },
 
-    // Sauvegarder les données dans le localStorage
-    saveJsonData() {
-      localStorage.setItem('formDataSecurityKey', JSON.stringify(this.last7DaysDataSecurity))
-      alert('Données sauvegardées avec succès !') // Alerter l'utilisateur
-    },
-
-    // Effacer les dessins sur les canevas
-    clearDrawings() {
-      this.formDataSecurity.photos = [null, null]
-    },
-
-    // Sélectionner un élément de l'historique pour indiquer un problème similaire
     selectHistoryItem(index) {
       const item = this.last7DaysDataSecurity[index]
-      this.formDataSecurity.similarIssues = ['yes', item.numero] // Mettre à jour les problèmes similaires
+      this.formDataSecurity.similarIssues = ['yes', item.numero]
     }
   }
 }

@@ -225,7 +225,7 @@ export default {
       formDataSecurity: {
         numero: 0,
         description: '',
-        photos: [null, null],
+        photos: [null, null], // Photos stockées sous forme de dataURL
         date: '',
         time: '',
         similarIssues: ['no', null],
@@ -266,11 +266,24 @@ export default {
     this.initializeDrawings()
   },
   methods: {
+    // Fonction pour convertir un dataURL en Blob
+    dataURLToBlob(dataURL) {
+      const [header, base64] = dataURL.split(',')
+      const byteString = atob(base64)
+      const mimeString = header.split(':')[1].split(';')[0]
+      const arrayBuffer = new ArrayBuffer(byteString.length)
+      const uintArray = new Uint8Array(arrayBuffer)
+      for (let i = 0; i < byteString.length; i++) {
+        uintArray[i] = byteString.charCodeAt(i)
+      }
+      return new Blob([uintArray], { type: mimeString })
+    },
+
     // Charger les données depuis le backend
     async loadJsonData() {
       try {
-        const response = await axios.get('http://localhost:3000/api/history')
-        this.last7DaysDataSecurity = response.data
+        const { data } = await axios.get('http://localhost:3000/api/history')
+        this.last7DaysDataSecurity = data
         this.formDataSecurity.numero = this.last7DaysDataSecurity.length + 1
       } catch (error) {
         console.error('Erreur lors du chargement des données :', error)
@@ -282,24 +295,51 @@ export default {
       try {
         this.formDataSecurity.submissionTime = this.getCurrentTime()
 
-        // Vérifie que les champs JSON sont bien formés
-        console.log('Data being sent:', {
-          ...this.formDataSecurity,
-          sortingData: this.sortingData
+        const formData = new FormData()
+
+        // Combiner photo et dessin avant soumission
+        const processCanvas = async (index) => {
+          const canvas = this.$refs[`drawingCanvas${index + 1}`]
+          const ctx = canvas.getContext('2d')
+
+          // Charger la photo sur le canevas
+          if (this.formDataSecurity.photos[index]) {
+            const image = new Image()
+            image.src = this.formDataSecurity.photos[index]
+
+            await new Promise((resolve) => {
+              image.onload = () => {
+                ctx.drawImage(image, 0, 0, canvas.width, canvas.height)
+                resolve()
+              }
+            })
+
+            // Récupérer l'image combinée (photo + dessin)
+            const combinedImageData = canvas.toDataURL()
+            const photoBlob = this.dataURLToBlob(combinedImageData)
+            formData.append('photos', photoBlob, `photo${index + 1}.png`)
+          }
+        }
+
+        // Traiter les deux canevas
+        await processCanvas(0)
+        await processCanvas(1)
+
+        formData.append('formDataSecurity', JSON.stringify(this.formDataSecurity))
+        formData.append('sortingData', JSON.stringify(this.sortingData))
+
+        const { data } = await axios.post('http://localhost:3000/api/form-submit', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
         })
 
-        const response = await axios.post('http://localhost:3000/api/form-submit', {
-          ...this.formDataSecurity,
-          sortingData: this.sortingData
-        })
-
-        this.last7DaysDataSecurity.push(response.data)
+        this.last7DaysDataSecurity.push(data)
         this.resetFormData()
         this.resetCanvas()
       } catch (error) {
         console.error('Erreur lors de la soumission :', error)
       }
     },
+
     resetFormData() {
       this.formDataSecurity = {
         numero: this.last7DaysDataSecurity.length + 1,
@@ -316,24 +356,18 @@ export default {
         immediateActions: [],
         submissionTime: ''
       }
-      this.sortingData = {
-        piecesOk: 0,
-        piecesNok: 0
-      }
+      this.sortingData = { piecesOk: 0, piecesNok: 0 }
       this.setCurrentDateTime()
     },
 
-    // Gestion des canevas et des photos
     resetCanvas() {
-      this.clearPhoto(0)
-      this.clearPhoto(1)
+      ;[0, 1].forEach((index) => this.clearPhoto(index))
       this.initializeDrawings()
     },
 
     initializeDrawings() {
       this.$nextTick(() => {
-        this.setupCanvas(this.$refs.drawingCanvas1, 0)
-        this.setupCanvas(this.$refs.drawingCanvas2, 1)
+        ;[0, 1].forEach((index) => this.setupCanvas(this.$refs[`drawingCanvas${index + 1}`], index))
       })
     },
 
@@ -346,9 +380,9 @@ export default {
     enableDrawing(canvas, ctx, index) {
       let isDrawing = false
 
-      function getAdjustedCoordinates(event) {
-        const rect = canvas.getBoundingClientRect()
-        return { x: event.clientX - rect.left, y: event.clientY - rect.top }
+      const getAdjustedCoordinates = (event) => {
+        const { left, top } = canvas.getBoundingClientRect()
+        return { x: event.clientX - left, y: event.clientY - top }
       }
 
       canvas.addEventListener('mousedown', (event) => {
@@ -367,44 +401,31 @@ export default {
       })
 
       canvas.addEventListener('mouseup', () => {
-        if (isDrawing) {
-          isDrawing = false
-          this.saveDrawing(index)
-        }
+        isDrawing = false
+        this.saveDrawing(index)
       })
 
-      canvas.addEventListener('mouseleave', () => {
-        if (isDrawing) {
-          isDrawing = false
-          this.saveDrawing(index)
-        }
-      })
+      canvas.addEventListener('mouseleave', () => (isDrawing = false))
     },
 
     saveDrawing(index) {
-      const canvas = index === 0 ? this.$refs.drawingCanvas1 : this.$refs.drawingCanvas2
-      const dataURL = canvas.toDataURL()
-      this.formDataSecurity.photos[index] = dataURL
+      const canvas = this.$refs[`drawingCanvas${index + 1}`]
+      this.formDataSecurity.photos[index] = canvas.toDataURL()
     },
 
     clearPhoto(index) {
-      const canvas = index === 0 ? this.$refs.drawingCanvas1 : this.$refs.drawingCanvas2
+      const canvas = this.$refs[`drawingCanvas${index + 1}`]
       const ctx = canvas.getContext('2d')
       ctx.clearRect(0, 0, canvas.width, canvas.height)
       this.formDataSecurity.photos[index] = null
-      const photoInput = index === 0 ? this.$refs.photoInput1 : this.$refs.photoInput2
-      if (photoInput) {
-        photoInput.value = null
-      }
+      this.$refs[`photoInput${index + 1}`].value = null
     },
 
     handleSecuringChange(value) {
       this.formDataSecurity.securisation = value
       const contactEmail = this.contacts[3].email
-      if (value === 'yes') {
-        if (!this.formDataSecurity.alertContacts.includes(contactEmail)) {
-          this.formDataSecurity.alertContacts.push(contactEmail)
-        }
+      if (value === 'yes' && !this.formDataSecurity.alertContacts.includes(contactEmail)) {
+        this.formDataSecurity.alertContacts.push(contactEmail)
       } else {
         this.formDataSecurity.alertContacts = this.formDataSecurity.alertContacts.filter(
           (email) => email !== contactEmail
@@ -425,7 +446,7 @@ export default {
     },
 
     loadPhotoToCanvas(photoSrc, index) {
-      const canvas = index === 0 ? this.$refs.drawingCanvas1 : this.$refs.drawingCanvas2
+      const canvas = this.$refs[`drawingCanvas${index + 1}`]
       const ctx = canvas.getContext('2d')
       const image = new Image()
       image.onload = () => {
@@ -443,12 +464,12 @@ export default {
     },
 
     getCurrentTime() {
-      const now = new Date()
-      return now.toTimeString().split(' ')[0].slice(0, 5)
+      return new Date().toTimeString().split(' ')[0].slice(0, 5)
     },
 
     addAction() {
-      if (this.newAction.action && this.newAction.name && this.newAction.time) {
+      const { action, name, time } = this.newAction
+      if (action && name && time) {
         this.formDataSecurity.immediateActions.push({ ...this.newAction })
         this.newAction = { action: '', name: '', time: '' }
       }

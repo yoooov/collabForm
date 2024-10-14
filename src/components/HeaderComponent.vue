@@ -5,7 +5,7 @@
         <!-- Logo de l'application -->
         <div class="logo">
           <img src="../assets/img/Collab_QRAP.png" alt="Logo" />
-          <h1>QRAP Assist</h1>
+          <h1>Collab - QRAP Assist</h1>
         </div>
         <!-- Menu déroulant sous forme de sélecteur -->
         <div class="selector-menu">
@@ -85,7 +85,7 @@ header {
 
 .logo {
   display: flex;
-  align-items: center;
+  gap: 10px;
   flex-direction: column;
   margin: 10px 0;
 }

@@ -15,6 +15,9 @@
         <li>
           <router-link to="/form-machine-breakdown">Formulaire Pannes Machines</router-link>
         </li>
+        <li>
+          <router-link to="/form-mesure">Formulaire Mesure</router-link>
+        </li>
       </ul>
     </div>
   </div>
